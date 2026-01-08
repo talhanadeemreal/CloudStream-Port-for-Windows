@@ -1,0 +1,156 @@
+-- WatchHistory table: tracks user viewing progress
+CREATE TABLE IF NOT EXISTS WatchHistory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    provider_name TEXT NOT NULL,
+    media_url TEXT NOT NULL,
+    media_title TEXT NOT NULL,
+    media_poster_url TEXT,
+    episode_number INTEGER,
+    episode_name TEXT,
+    position_ms INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    last_watched_at INTEGER NOT NULL,
+    UNIQUE(provider_name, media_url, episode_number) ON CONFLICT REPLACE
+);
+
+CREATE INDEX idx_watch_history_last_watched ON WatchHistory(last_watched_at DESC);
+CREATE INDEX idx_watch_history_media ON WatchHistory(provider_name, media_url);
+
+-- Bookmarks table: user's saved/favorited content
+CREATE TABLE IF NOT EXISTS Bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    provider_name TEXT NOT NULL,
+    media_url TEXT NOT NULL,
+    media_title TEXT NOT NULL,
+    media_poster_url TEXT,
+    media_type TEXT NOT NULL,
+    year INTEGER,
+    added_at INTEGER NOT NULL,
+    UNIQUE(provider_name, media_url) ON CONFLICT REPLACE
+);
+
+CREATE INDEX idx_bookmarks_added ON Bookmarks(added_at DESC);
+CREATE INDEX idx_bookmarks_provider ON Bookmarks(provider_name);
+
+-- RepositoryMetadata table: tracks installed extensions and repositories  
+CREATE TABLE IF NOT EXISTS RepositoryMetadata (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    repository_url TEXT NOT NULL UNIQUE,
+    repository_name TEXT NOT NULL,
+    last_updated INTEGER NOT NULL,
+    is_enabled INTEGER NOT NULL DEFAULT 1
+);
+
+-- InstalledExtensions table: tracks installed extensions
+CREATE TABLE IF NOT EXISTS InstalledExtensions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    extension_name TEXT NOT NULL UNIQUE,
+    version TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    repository_url TEXT,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    installed_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_extensions_enabled ON InstalledExtensions(is_enabled);
+
+-- SearchHistory table: recent searches for autocomplete
+CREATE TABLE IF NOT EXISTS SearchHistory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    query TEXT NOT NULL UNIQUE,
+    search_count INTEGER NOT NULL DEFAULT 1,
+    last_searched_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_search_history_recent ON SearchHistory(last_searched_at DESC);
+
+-- Queries
+
+-- WatchHistory queries
+selectAll:
+SELECT * FROM WatchHistory ORDER BY last_watched_at DESC;
+
+selectByMedia:
+SELECT * FROM WatchHistory 
+WHERE provider_name = ? AND media_url = ?
+ORDER BY episode_number;
+
+selectRecent:
+SELECT * FROM WatchHistory 
+ORDER BY last_watched_at DESC 
+LIMIT ?;
+
+insertOrUpdate:
+INSERT OR REPLACE INTO WatchHistory(provider_name, media_url, media_title, media_poster_url, episode_number, episode_name, position_ms, duration_ms, last_watched_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteByMedia:
+DELETE FROM WatchHistory WHERE provider_name = ? AND media_url = ?;
+
+deleteOldHistory:
+DELETE FROM WatchHistory WHERE last_watched_at < ?;
+
+-- Bookmarks queries
+selectAllBookmarks:
+SELECT * FROM Bookmarks ORDER BY added_at DESC;
+
+selectBookmarkByUrl:
+SELECT * FROM Bookmarks WHERE provider_name = ? AND media_url = ?;
+
+insertBookmark:
+INSERT OR REPLACE INTO Bookmarks(provider_name, media_url, media_title, media_poster_url, media_type, year, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteBookmark:
+DELETE FROM Bookmarks WHERE provider_name = ? AND media_url = ?;
+
+-- RepositoryMetadata queries
+selectAllRepositories:
+SELECT * FROM RepositoryMetadata;
+
+selectEnabledRepositories:
+SELECT * FROM RepositoryMetadata WHERE is_enabled = 1;
+
+insertRepository:
+INSERT OR REPLACE INTO RepositoryMetadata(repository_url, repository_name, last_updated, is_enabled)
+VALUES (?, ?, ?, ?);
+
+updateRepositoryTimestamp:
+UPDATE RepositoryMetadata SET last_updated = ? WHERE repository_url = ?;
+
+deleteRepository:
+DELETE FROM RepositoryMetadata WHERE repository_url = ?;
+
+-- InstalledExtensions queries
+selectAllExtensions:
+SELECT * FROM InstalledExtensions;
+
+selectEnabledExtensions:
+SELECT * FROM InstalledExtensions WHERE is_enabled = 1;
+
+selectExtensionByName:
+SELECT * FROM InstalledExtensions WHERE extension_name = ?;
+
+insertExtension:
+INSERT OR REPLACE INTO InstalledExtensions(extension_name, version, file_path, repository_url, is_enabled, installed_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+updateExtensionEnabled:
+UPDATE InstalledExtensions SET is_enabled = ? WHERE extension_name = ?;
+
+deleteExtension:
+DELETE FROM InstalledExtensions WHERE extension_name = ?;
+
+-- SearchHistory queries
+selectSearchHistory:
+SELECT * FROM SearchHistory ORDER BY last_searched_at DESC LIMIT 20;
+
+insertOrUpdateSearch:
+INSERT INTO SearchHistory(query, search_count, last_searched_at)
+VALUES (?, 1, ?)
+ON CONFLICT(query) DO UPDATE SET 
+    search_count = search_count + 1,
+    last_searched_at = excluded.last_searched_at;
+
+deleteOldSearches:
+DELETE FROM SearchHistory WHERE last_searched_at < ?;
